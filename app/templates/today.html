@@ -44,22 +44,12 @@
   .bar > i { display:block; height:100%; }
 
   .toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; margin:0 0 16px; }
-  .sortbtns { display:flex; align-items:center; gap:6px; }
-  .sortbtn { font-size:12px; padding:4px 11px; border-radius:20px; border:1px solid var(--line);
-    background:var(--card); color:var(--muted); }
-  .sortbtn.on { background:var(--accent); color:#1a1204; border-color:var(--accent); font-weight:600; }
   .oddsbanner { font-size:12px; color:var(--muted); }
   .oddsbanner code { background:var(--card2); padding:1px 5px; border-radius:4px; color:var(--text); }
 
-  td.odds { min-width:170px; }
-  .oddline { display:flex; align-items:center; gap:7px; flex-wrap:wrap; font-variant-numeric:tabular-nums; }
-  .oddline .model { font-weight:700; font-size:15px; }
-  .oddline .arrow { color:var(--muted); }
-  .oddline .line { color:var(--text); }
-  .oddline .edge { font-weight:600; font-size:13px; }
-  td.odds small { display:block; margin-top:3px; font-size:11px; }
-  .badge { font-size:10px; font-weight:700; letter-spacing:.5px; color:#0d2b18;
-    background:var(--good); border-radius:5px; padding:1px 6px; }
+  td.odds { min-width:80px; }
+  td.odds .line { font-weight:700; font-size:15px; font-variant-numeric:tabular-nums; color:var(--text); }
+  td.odds small { display:block; margin-top:2px; font-size:11px; }
 
   .chips { display:flex; flex-wrap:wrap; gap:5px; }
   .chip { font-size:11px; padding:2px 7px; border-radius:6px; background:var(--card2);
@@ -104,18 +94,12 @@
   </div>
 
   <div class="toolbar">
-    <div class="sortbtns">
-      <span class="muted">Sort:</span>
-      <a class="sortbtn {{ 'on' if sort != 'edge' }}" href="/today?date={{ board.date }}&sort=score">HR Score</a>
-      <a class="sortbtn {{ 'on' if sort == 'edge' }}" href="/today?date={{ board.date }}&sort=edge">Edge vs line</a>
-    </div>
     <div class="oddsbanner">
       {% if board.odds.batters_matched %}
-        📈 {{ board.odds.batters_matched }} HR props matched
-        (<code>{{ board.odds.provider }}</code>) · Proj = model anchored to market · Edge = Proj − de-vigged line (raw model in row)
+        📈 HR Odds = "to hit a home run" (Over 0.5) line ·
+        {{ board.odds.batters_matched }} matched from <code>{{ board.odds.provider }}</code>
       {% else %}
-        ⚠️ No HR prop lines loaded — drop a CSV at
-        <code>instance/odds/{{ board.date }}.csv</code> (see README). Model % still shown.
+        HR Odds column empty — no lines loaded for {{ board.date }}.
       {% endif %}
     </div>
   </div>
@@ -128,7 +112,7 @@
         <th>Batter</th>
         <th>Matchup</th>
         <th>HR Score</th>
-        <th>Model / Line / Edge</th>
+        <th>HR Odds</th>
         <th>Signals</th>
       </tr>
     </thead>
@@ -153,24 +137,10 @@
         </td>
         <td class="odds">
           {% if r.odds %}
-            <div class="oddline">
-              <span class="model">{{ r.odds.proj_pct }}%</span>
-              <span class="arrow">→</span>
-              <span class="line">{{ '+' if r.odds.american > 0 }}{{ r.odds.american }}</span>
-              <span class="edge" style="color:{{ 'var(--good)' if r.odds.edge_pp > 0 else 'var(--bad)' }};">
-                {{ '+' if r.odds.edge_pp > 0 }}{{ r.odds.edge_pp }}pp</span>
-              {% if r.odds.value %}<span class="badge">VALUE</span>{% endif %}
-            </div>
-            <small class="muted">
-              fair {{ '+' if r.odds.proj_fair > 0 }}{{ r.odds.proj_fair }} ·
-              mkt {{ (r.odds.market_prob*100)|round(1) }}%{{ ' (novig)' if r.odds.implied_novig is not none }} ·
-              EV {{ '+' if r.odds.ev_pct > 0 }}{{ r.odds.ev_pct }}% ·
-              raw {{ r.model_pct }}%
-            </small>
+            <span class="line">{{ '+' if r.odds.american > 0 }}{{ r.odds.american }}</span>
+            {% if r.odds.book %}<small class="muted">{{ r.odds.book }}</small>{% endif %}
           {% else %}
-            <div class="oddline"><span class="model">{{ r.model_pct }}%</span>
-              <span class="muted">no line</span></div>
-            <small class="muted">fair {{ '+' if r.fair_american > 0 }}{{ r.fair_american }}</small>
+            <span class="muted">—</span>
           {% endif %}
         </td>
         <td>

@@ -18,63 +18,33 @@ tune them however you like.
 
 > Model output only — **not betting advice.**
 
-## HR prop odds & betting edge
+## HR prop odds column
 
-On top of the ranking, the board computes an actual **P(batter hits ≥1 HR
-today)** and compares it to a sportsbook line to find mispriced bats:
+The board adds an **HR Odds** column showing each batter's "to hit a home run"
+(Over 0.5) prop line next to their HR Score — no model/edge math, just the price.
+Set the source with `ODDS_PROVIDER`:
 
-- **Raw model** — season HR/PA (regressed toward league, so low-PA bats don't
-  spike) × gentle park/weather/pitcher context factors, compounded over the
-  batter's expected plate appearances. Recency lives in the HR Score, *not*
-  here, so a hot 3-for-12 week can't distort the price. This is the number shown
-  for bats with no line, and as `raw` in the detail line.
-- **Proj** — the raw model **anchored to the market**. A sharp HR line already
-  prices talent + matchup, so we treat the de-vigged market prob as a strong
-  prior and keep only a fraction of our disagreement with it (blend in log-odds).
-  The kept fraction shrinks for longshots — where the model is least reliable —
-  so a +1100 slap hitter's inflated edge collapses toward the line while a fairly
-  priced bat's genuine edge mostly survives. Tunable via `ANCHOR_K` (max share
-  of disagreement kept, default 0.5) and `ANCHOR_P_REF` (default 0.15).
-- **Edge** — Proj minus the *de-vigged* market probability. `VALUE` fires only
-  when the edge clears `VALUE_THRESHOLD_PP` (default 3pp) and the price is inside
-  `VALUE_MAX_ODDS` (default +600). **Fair** is Proj's break-even line, **EV** the
-  expected return per $1 on the Over.
+**`actionnetwork` (default, free, no key)** — pulls today's HR props from Action
+Network's public JSON API (`web/v2/games/{id}/props`, `core_bet_type_33_hr`)
+across all games and shows the **Consensus** line (market average). Set
+`AN_BOOK_ID` for a specific book (49 Caesars, 69 FanDuel, 30 Open). Matches
+players by team + initial/last. Runs fine from this Mac; a hosted box *may* get
+rate-limited (it's their internal endpoint), so keep `file` as a backup.
 
-> Because the market is efficient, expect **few or zero** VALUE badges most days
-> — that's the tool being honest, not broken. The edge *sort* still ranks every
-> bat so you can eyeball the best of a thin slate.
-
-Sort the board by **Edge vs line** (toolbar) to surface value plays.
-
-### Feeding in odds
-
-Three providers, set by `ODDS_PROVIDER`:
-
-**`actionnetwork` (default, free, no key)** — pulls today's HR props straight
-from Action Network's public JSON API (`web/v2/games/{id}/props`,
-`core_bet_type_33_hr`) across all games and prices against the **Consensus**
-line (id 15), which carries both Over and Under so edges are de-vigged. Set
-`AN_BOOK_ID` to price against a specific book instead (49 Caesars, 69 FanDuel).
-Matches players by team + initial/last. Runs fine from this Mac; a hosted box
-*may* get rate-limited (it's their internal endpoint), so keep `file` as backup.
-
-The other two providers:
-
-**`file` (default, free)** — drop a CSV or JSON at `instance/odds/<date>.csv`:
+**`file` (free)** — drop a CSV or JSON at `instance/odds/<date>.csv`:
 
 ```csv
-player,book,over,under
-Kyle Schwarber,DK,+300,-400
-Hunter Goodman,DK,+330,
+player,book,over
+Kyle Schwarber,DK,+300
+Hunter Goodman,DK,+330
 ```
 
-`under` is optional — include it to de-vig to the true probability; leave it
-blank to fall back to the threshold rule. Names are matched fuzzily (accents and
-Jr./Sr. suffixes ignored). See `instance/odds/sample_odds.csv`.
+Names are matched fuzzily (accents and Jr./Sr. suffixes ignored). See
+`instance/odds/sample_odds.csv`.
 
 **`theoddsapi`** — set `ODDS_PROVIDER=theoddsapi` and `ODDS_API_KEY=...` (paid
-Business plan for the `batter_home_runs` market). Fully implemented — no code
-changes, it just starts pulling live lines and de-vigging across books.
+Business plan for the `batter_home_runs` market). Shows the best Over price
+across books.
 
 > Model output only — **not betting advice.**
 
@@ -103,9 +73,8 @@ app/
     schedule.py   StatsAPI — games, probable pitchers, posted lineups
     statcast.py   Savant FB%/HardHit%, BRef 7-day form, StatsAPI BvP, lineup fallback
     weather.py    Open-Meteo — game-time carry score (temp + wind vs CF axis)
-    odds.py       pluggable HR-prop providers (Action Network / file / Odds API) + de-vig
-  model.py        P(>=1 HR) probability, fair odds, edge vs the market line
-  scoring.py      blends the five signals + attaches model prob / edge per bat
+    odds.py       pluggable HR-prop providers (Action Network / file / Odds API)
+  scoring.py      blends the five signals + attaches each bat's HR prop line
   cache.py        in-process TTL cache (board build hits many live endpoints)
   main.py / api.py / templates/today.html
 ```

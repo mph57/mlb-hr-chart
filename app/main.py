@@ -25,15 +25,5 @@ def _build(date: str):
 def today():
     date = request.args.get("date") or dt.date.today().isoformat()
     limit = int(request.args.get("limit", current_app.config["LEADERBOARD_LIMIT"]))
-    sort = request.args.get("sort", "score")  # "score" | "edge"
     board = _build(date)
-
-    rows = list(board["leaderboard"])
-    if sort == "edge":
-        # Priced bats first, ranked by edge; unpriced bats fall to the bottom.
-        rows.sort(key=lambda r: (r["odds"] is not None,
-                                 r["odds"]["edge_pp"] if r.get("odds") else 0,
-                                 r["hr_score"]), reverse=True)
-    board = {**board, "leaderboard": rows}
-    return render_template("today.html", board=board, limit=limit,
-                           date=date, sort=sort)
+    return render_template("today.html", board=board, limit=limit, date=date)

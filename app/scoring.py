@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import datetime as dt
 
-from . import model
 from .data.parks import get_park
 from .data.odds import get_hr_odds, match_key
 from .data.schedule import get_slate
@@ -88,7 +87,7 @@ def _bvp_score(bvp: dict | None) -> tuple[float, dict]:
 
 
 def _score_batter(batter, pitcher, park, weather, pit_prof,
-                  form_map, bvp_map, season_map, odds_map, team=None):
+                  form_map, bvp_map, odds_map, team=None):
     weather_s = weather["favor"]
     park_s = _park_score(park["hr_factor"])
     pitcher_s, pit_detail = _pitcher_score(pit_prof)
@@ -104,18 +103,9 @@ def _score_batter(batter, pitcher, park, weather, pit_prof,
         + WEIGHTS["bvp"] * bvp_s
     )
 
-    # Actual HR probability (for pricing/edge), independent of the soft blend.
-    prob = model.hr_probability(
-        season=season_map.get(batter["id"]),
-        recent=form_map.get(batter["id"]),
-        order=batter.get("order"),
-        hr_factor=park["hr_factor"],
-        weather_favor=weather_s,
-        pitcher_subscore=pitcher_s,
-    )
+    # Today's HR prop line for this batter, if we have one (name shown as-is).
     quote = (odds_map.get(match_key(batter["name"], team))
              or odds_map.get(match_key(batter["name"])))
-    edge = model.edge(prob["prob"], quote)
 
     return {
         "batter": batter["name"],
@@ -130,11 +120,7 @@ def _score_batter(batter, pitcher, park, weather, pit_prof,
             "form": round(form_s, 1),
             "bvp": round(bvp_s, 1),
         },
-        "model_prob": prob["prob"],
-        "model_pct": round(prob["prob"] * 100, 1),
-        "fair_american": prob["fair_american"],
-        "prob_detail": prob,
-        "odds": edge,          # None when no quote for this batter
+        "odds": quote,          # {american, book, implied, ...} or None
         "pitcher_detail": pit_detail,
         "form_detail": form_detail,
         "bvp_detail": bvp_detail,
@@ -150,7 +136,6 @@ def get_board(date: str | None = None) -> dict:
     slate = get_slate(date)
     pit_bb = _safe(lambda: statcast.pitcher_batted_ball(year), {})
     form_map = _safe(lambda: statcast.recent_form(date, days=7), {})
-    season_map = _safe(lambda: statcast.season_form(date), {})
     odds_map = _safe(lambda: get_hr_odds(date), {})
 
     # Resolve lineups (posted or fallback) and gather every BvP pair up front.
@@ -197,7 +182,7 @@ def get_board(date: str | None = None) -> dict:
                 if not b.get("id"):
                     continue
                 row = _score_batter(b, pitcher, park, weather, pit_prof,
-                                    form_map, bvp_map, season_map, odds_map,
+                                    form_map, bvp_map, odds_map,
                                     team=g[side]["abbr"])
                 row.update({
                     "team": g[side]["abbr"],
