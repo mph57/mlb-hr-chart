@@ -19,7 +19,7 @@ import datetime as dt
 
 from . import model
 from .data.parks import get_park
-from .data.odds import get_hr_odds, normalize_name
+from .data.odds import get_hr_odds, match_key
 from .data.schedule import get_slate
 from .data import statcast
 from .data.weather import game_weather
@@ -88,7 +88,7 @@ def _bvp_score(bvp: dict | None) -> tuple[float, dict]:
 
 
 def _score_batter(batter, pitcher, park, weather, pit_prof,
-                  form_map, bvp_map, season_map, odds_map):
+                  form_map, bvp_map, season_map, odds_map, team=None):
     weather_s = weather["favor"]
     park_s = _park_score(park["hr_factor"])
     pitcher_s, pit_detail = _pitcher_score(pit_prof)
@@ -113,7 +113,8 @@ def _score_batter(batter, pitcher, park, weather, pit_prof,
         weather_favor=weather_s,
         pitcher_subscore=pitcher_s,
     )
-    quote = odds_map.get(normalize_name(batter["name"]))
+    quote = (odds_map.get(match_key(batter["name"], team))
+             or odds_map.get(match_key(batter["name"])))
     edge = model.edge(prob["prob"], quote)
 
     return {
@@ -196,7 +197,8 @@ def get_board(date: str | None = None) -> dict:
                 if not b.get("id"):
                     continue
                 row = _score_batter(b, pitcher, park, weather, pit_prof,
-                                    form_map, bvp_map, season_map, odds_map)
+                                    form_map, bvp_map, season_map, odds_map,
+                                    team=g[side]["abbr"])
                 row.update({
                     "team": g[side]["abbr"],
                     "opp_pitcher": pitcher["name"] if pitcher else None,
@@ -223,7 +225,7 @@ def get_board(date: str | None = None) -> dict:
     import os
     matched = sum(1 for r in all_rows if r.get("odds"))
     odds_meta = {
-        "provider": os.environ.get("ODDS_PROVIDER", "file"),
+        "provider": os.environ.get("ODDS_PROVIDER", "actionnetwork"),
         "quotes_loaded": len(odds_map),
         "batters_matched": matched,
     }

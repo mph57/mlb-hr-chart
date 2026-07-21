@@ -37,9 +37,23 @@ Sort the board by **Edge vs line** (toolbar) to surface value plays.
 
 ### Feeding in odds
 
-Odds require a source (no reliable free feed exists — DK/FanDuel block servers,
-The Odds API gates player props behind a paid plan). Two providers, set by
-`ODDS_PROVIDER`:
+Three providers, set by `ODDS_PROVIDER`:
+
+**`actionnetwork` (default, free, no key)** — pulls today's HR props straight
+from Action Network's public JSON API (`web/v2/games/{id}/props`,
+`core_bet_type_33_hr`) across all games and prices against the **Consensus**
+line (id 15), which carries both Over and Under so edges are de-vigged. Set
+`AN_BOOK_ID` to price against a specific book instead (49 Caesars, 69 FanDuel).
+Matches players by team + initial/last. Runs fine from this Mac; a hosted box
+*may* get rate-limited (it's their internal endpoint), so keep `file` as backup.
+
+> ⚠️ **Read longshot edges skeptically.** On sharply-priced sluggers the model
+> tracks the market closely (small edges). But it regresses weak hitters *up*
+> toward the league mean, so it over-projects deep longshots the market prices
+> far lower — those big green edges are mostly model error. VALUE badges are
+> suppressed above `VALUE_MAX_ODDS` (default +600) for exactly this reason.
+
+The other two providers:
 
 **`file` (default, free)** — drop a CSV or JSON at `instance/odds/<date>.csv`:
 
@@ -84,7 +98,7 @@ app/
     schedule.py   StatsAPI — games, probable pitchers, posted lineups
     statcast.py   Savant FB%/HardHit%, BRef 7-day form, StatsAPI BvP, lineup fallback
     weather.py    Open-Meteo — game-time carry score (temp + wind vs CF axis)
-    odds.py       pluggable HR-prop providers (file / The Odds API) + de-vig
+    odds.py       pluggable HR-prop providers (Action Network / file / Odds API) + de-vig
   model.py        P(>=1 HR) probability, fair odds, edge vs the market line
   scoring.py      blends the five signals + attaches model prob / edge per bat
   cache.py        in-process TTL cache (board build hits many live endpoints)

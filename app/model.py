@@ -35,6 +35,12 @@ RECENT_CAP = 0.11       # cap the recent HR/PA it can contribute (anti-fluke)
 # posted Under price, only flag value when the edge clears this cushion (points).
 VALUE_THRESHOLD_PP = float(os.environ.get("VALUE_THRESHOLD_PP", "3.0"))
 
+# The probability model regresses weak hitters toward the league mean, so it
+# over-projects deep longshots that a sharp market prices far lower — those
+# "edges" are model error, not value. Don't flag VALUE on prices longer than
+# this (the edge is still shown; only the badge is suppressed).
+VALUE_MAX_ODDS = int(os.environ.get("VALUE_MAX_ODDS", "600"))
+
 # Expected plate appearances by batting-order slot (1-9). Top of order sees
 # more PAs; unknown slots fall back to a league-ish 4.0.
 EXP_PA_BY_SLOT = {1: 4.5, 2: 4.4, 3: 4.3, 4: 4.2, 5: 4.1,
@@ -132,6 +138,9 @@ def edge(model_prob: float, quote: dict | None) -> dict | None:
         value = model_prob > market            # already vig-free
     else:
         value = edge_pp >= VALUE_THRESHOLD_PP   # cushion for unknown vig
+    # Suppress the badge on deep longshots where the model is unreliable.
+    if quote["american"] > VALUE_MAX_ODDS:
+        value = False
 
     return {
         "book": quote.get("book"),
