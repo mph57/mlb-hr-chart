@@ -23,15 +23,26 @@ tune them however you like.
 On top of the ranking, the board computes an actual **P(batter hits ≥1 HR
 today)** and compares it to a sportsbook line to find mispriced bats:
 
-- **Model %** — season HR/PA (regressed toward league, so low-PA bats don't
+- **Raw model** — season HR/PA (regressed toward league, so low-PA bats don't
   spike) × gentle park/weather/pitcher context factors, compounded over the
   batter's expected plate appearances. Recency lives in the HR Score, *not*
-  here, so a hot 3-for-12 week can't distort the price.
-- **Edge** — Model % minus the market's *de-vigged* implied probability. When
-  only the Over price is known (can't de-vig), a bet is flagged `VALUE` only if
-  the edge clears `VALUE_THRESHOLD_PP` (default 3pp) so the book's hold isn't
-  mistaken for an edge. **Fair** shows the model's own break-even line and
-  **EV** the expected return per $1 on the Over.
+  here, so a hot 3-for-12 week can't distort the price. This is the number shown
+  for bats with no line, and as `raw` in the detail line.
+- **Proj** — the raw model **anchored to the market**. A sharp HR line already
+  prices talent + matchup, so we treat the de-vigged market prob as a strong
+  prior and keep only a fraction of our disagreement with it (blend in log-odds).
+  The kept fraction shrinks for longshots — where the model is least reliable —
+  so a +1100 slap hitter's inflated edge collapses toward the line while a fairly
+  priced bat's genuine edge mostly survives. Tunable via `ANCHOR_K` (max share
+  of disagreement kept, default 0.5) and `ANCHOR_P_REF` (default 0.15).
+- **Edge** — Proj minus the *de-vigged* market probability. `VALUE` fires only
+  when the edge clears `VALUE_THRESHOLD_PP` (default 3pp) and the price is inside
+  `VALUE_MAX_ODDS` (default +600). **Fair** is Proj's break-even line, **EV** the
+  expected return per $1 on the Over.
+
+> Because the market is efficient, expect **few or zero** VALUE badges most days
+> — that's the tool being honest, not broken. The edge *sort* still ranks every
+> bat so you can eyeball the best of a thin slate.
 
 Sort the board by **Edge vs line** (toolbar) to surface value plays.
 
@@ -46,12 +57,6 @@ line (id 15), which carries both Over and Under so edges are de-vigged. Set
 `AN_BOOK_ID` to price against a specific book instead (49 Caesars, 69 FanDuel).
 Matches players by team + initial/last. Runs fine from this Mac; a hosted box
 *may* get rate-limited (it's their internal endpoint), so keep `file` as backup.
-
-> ⚠️ **Read longshot edges skeptically.** On sharply-priced sluggers the model
-> tracks the market closely (small edges). But it regresses weak hitters *up*
-> toward the league mean, so it over-projects deep longshots the market prices
-> far lower — those big green edges are mostly model error. VALUE badges are
-> suppressed above `VALUE_MAX_ODDS` (default +600) for exactly this reason.
 
 The other two providers:
 

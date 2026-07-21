@@ -112,7 +112,7 @@
     <div class="oddsbanner">
       {% if board.odds.batters_matched %}
         📈 {{ board.odds.batters_matched }} HR props matched
-        (<code>{{ board.odds.provider }}</code>) · Model = P(≥1 HR); Edge vs de-vigged line
+        (<code>{{ board.odds.provider }}</code>) · Proj = model anchored to market · Edge = Proj − de-vigged line (raw model in row)
       {% else %}
         ⚠️ No HR prop lines loaded — drop a CSV at
         <code>instance/odds/{{ board.date }}.csv</code> (see README). Model % still shown.
@@ -154,7 +154,7 @@
         <td class="odds">
           {% if r.odds %}
             <div class="oddline">
-              <span class="model">{{ r.model_pct }}%</span>
+              <span class="model">{{ r.odds.proj_pct }}%</span>
               <span class="arrow">→</span>
               <span class="line">{{ '+' if r.odds.american > 0 }}{{ r.odds.american }}</span>
               <span class="edge" style="color:{{ 'var(--good)' if r.odds.edge_pp > 0 else 'var(--bad)' }};">
@@ -162,9 +162,10 @@
               {% if r.odds.value %}<span class="badge">VALUE</span>{% endif %}
             </div>
             <small class="muted">
-              fair {{ '+' if r.fair_american > 0 }}{{ r.fair_american }} ·
+              fair {{ '+' if r.odds.proj_fair > 0 }}{{ r.odds.proj_fair }} ·
               mkt {{ (r.odds.market_prob*100)|round(1) }}%{{ ' (novig)' if r.odds.implied_novig is not none }} ·
-              EV {{ '+' if r.odds.ev_pct > 0 }}{{ r.odds.ev_pct }}%
+              EV {{ '+' if r.odds.ev_pct > 0 }}{{ r.odds.ev_pct }}% ·
+              raw {{ r.model_pct }}%
             </small>
           {% else %}
             <div class="oddline"><span class="model">{{ r.model_pct }}%</span>

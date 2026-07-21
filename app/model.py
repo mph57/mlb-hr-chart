@@ -20,6 +20,7 @@ Over at the quoted decimal price. Fair odds are the model's own break-even line.
 """
 from __future__ import annotations
 
+import math
 import os
 
 from .data.odds import prob_to_american
@@ -38,8 +39,41 @@ VALUE_THRESHOLD_PP = float(os.environ.get("VALUE_THRESHOLD_PP", "3.0"))
 # The probability model regresses weak hitters toward the league mean, so it
 # over-projects deep longshots that a sharp market prices far lower — those
 # "edges" are model error, not value. Don't flag VALUE on prices longer than
-# this (the edge is still shown; only the badge is suppressed).
+# this (the edge is still shown; only the badge is suppressed). With market
+# anchoring below this rarely binds now; kept as a backstop.
 VALUE_MAX_ODDS = int(os.environ.get("VALUE_MAX_ODDS", "600"))
+
+# Market anchoring. A sharp HR-prop line already prices a batter's true talent
+# plus the matchup, so we treat the de-vigged market prob as a strong prior and
+# only keep a fraction of our disagreement with it. That fraction (k) shrinks
+# for longshots, where the model is least trustworthy, and is full for plausibly
+# priced bats, where our context signals (wind, form) can legitimately differ.
+ANCHOR_K = float(os.environ.get("ANCHOR_K", "0.5"))   # max share of disagreement kept
+ANCHOR_P_REF = float(os.environ.get("ANCHOR_P_REF", "0.15"))  # "plausible" market prob
+
+
+def _logit(p: float) -> float:
+    p = min(max(p, 1e-4), 1 - 1e-4)
+    return math.log(p / (1 - p))
+
+
+def _sigmoid(x: float) -> float:
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+def market_anchored(model_prob: float, market_prob: float) -> float:
+    """Blend model toward the market in log-odds, shrinking more for longshots.
+
+    k = ANCHOR_K * clamp(market_prob / ANCHOR_P_REF, 0.25, 1.0): a +1100 bat
+    (market ~8%) keeps ~half the weight a +200 bat does, so its inflated model
+    edge collapses toward the line while a fairly priced bat's genuine edge
+    largely survives.
+    """
+    if market_prob <= 0:
+        return model_prob
+    k = ANCHOR_K * _clampf(market_prob / ANCHOR_P_REF, 0.25, 1.0)
+    blended = _logit(market_prob) + k * (_logit(model_prob) - _logit(market_prob))
+    return _sigmoid(blended)
 
 # Expected plate appearances by batting-order slot (1-9). Top of order sees
 # more PAs; unknown slots fall back to a league-ish 4.0.
@@ -131,14 +165,16 @@ def edge(model_prob: float, quote: dict | None) -> dict | None:
     novig = quote.get("implied_novig")
     market = novig if novig is not None else raw_implied
 
-    ev = model_prob * (dec - 1.0) - (1.0 - model_prob)   # per $1 on the Over
-    edge_pp = (model_prob - market) * 100
+    # Our belief = model anchored to the (de-vigged) market. Edge and EV come
+    # off this projection, not the raw model, so longshot noise can't inflate it.
+    proj = market_anchored(model_prob, market)
+    ev = proj * (dec - 1.0) - (1.0 - proj)      # per $1 on the Over
+    edge_pp = (proj - market) * 100
 
-    if novig is not None:
-        value = model_prob > market            # already vig-free
-    else:
-        value = edge_pp >= VALUE_THRESHOLD_PP   # cushion for unknown vig
-    # Suppress the badge on deep longshots where the model is unreliable.
+    # Require a consistent edge cushion to flag VALUE — even de-vigged, a sub-3pp
+    # anchored edge is within model noise, not a confident bet.
+    value = edge_pp >= VALUE_THRESHOLD_PP
+    # Backstop: never badge a deep longshot even if anchoring left a sliver.
     if quote["american"] > VALUE_MAX_ODDS:
         value = False
 
@@ -148,6 +184,9 @@ def edge(model_prob: float, quote: dict | None) -> dict | None:
         "implied": round(raw_implied, 4),
         "implied_novig": round(novig, 4) if novig is not None else None,
         "market_prob": round(market, 4),
+        "proj_prob": round(proj, 4),           # market-anchored belief
+        "proj_pct": round(proj * 100, 1),
+        "proj_fair": prob_to_american(proj),   # fair line for the anchored belief
         "edge_pp": round(edge_pp, 1),          # points vs the fair market prob
         "ev_pct": round(ev * 100, 1),          # % of stake (uses Over price)
         "value": value,
