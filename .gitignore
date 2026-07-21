@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+# pybaseball caches Statcast/BRef pulls here
+.pybaseball_cache/
+*.log
+# Daily odds drops are local data; keep only the sample in the repo.
+instance/odds/20*.csv
+instance/odds/20*.json

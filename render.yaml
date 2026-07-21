@@ -1,0 +1,16 @@
+# Render blueprint: one free Python web service.
+# Push this repo to GitHub, then in Render: New + -> Blueprint -> pick the repo.
+services:
+  - type: web
+    name: mlb-hr-chart
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn wsgi:app --timeout 120 --workers 1"
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: BOARD_CACHE_TTL
+        value: "900"
+      - key: LEADERBOARD_LIMIT
+        value: "50"

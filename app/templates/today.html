@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daily HR Board — {{ board.date }}</title>
+<style>
+  :root {
+    --bg:#0f1216; --card:#171c22; --card2:#1d232b; --line:#2a323c;
+    --text:#e8edf2; --muted:#8b97a5; --accent:#f5a623;
+    --good:#2ec16b; --mid:#e8c33a; --bad:#e0603a;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  a { color:var(--accent); text-decoration:none; }
+  .wrap { max-width:1180px; margin:0 auto; padding:22px 18px 60px; }
+  header { display:flex; flex-wrap:wrap; align-items:baseline; gap:12px 18px;
+    border-bottom:1px solid var(--line); padding-bottom:14px; margin-bottom:18px; }
+  h1 { font-size:24px; margin:0; letter-spacing:.2px; }
+  .sub { color:var(--muted); font-size:13px; }
+  .controls { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  .controls input[type=date] { background:var(--card2); border:1px solid var(--line);
+    color:var(--text); border-radius:8px; padding:6px 8px; }
+  .btn { background:var(--accent); color:#1a1204; border:none; border-radius:8px;
+    padding:7px 12px; font-weight:600; cursor:pointer; }
+  .legend { display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 20px; font-size:12px; color:var(--muted); }
+  .legend span { background:var(--card); border:1px solid var(--line); border-radius:20px; padding:3px 10px; }
+
+  table { width:100%; border-collapse:collapse; background:var(--card); border-radius:12px; overflow:hidden; }
+  thead th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.6px;
+    color:var(--muted); padding:11px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  tbody td { padding:10px; border-bottom:1px solid var(--line); font-size:14px; vertical-align:middle; }
+  tbody tr:hover { background:var(--card2); }
+  .rank { color:var(--muted); font-variant-numeric:tabular-nums; width:34px; }
+  .who { font-weight:600; }
+  .who small { display:block; color:var(--muted); font-weight:400; font-size:12px; }
+  .tag { font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted);
+    border:1px solid var(--line); border-radius:5px; padding:1px 5px; margin-left:6px; }
+
+  .score { display:flex; align-items:center; gap:9px; min-width:120px; }
+  .score b { font-size:17px; font-variant-numeric:tabular-nums; width:38px; text-align:right; }
+  .bar { flex:1; height:7px; background:var(--card2); border-radius:5px; overflow:hidden; min-width:60px; }
+  .bar > i { display:block; height:100%; }
+
+  .toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; margin:0 0 16px; }
+  .sortbtns { display:flex; align-items:center; gap:6px; }
+  .sortbtn { font-size:12px; padding:4px 11px; border-radius:20px; border:1px solid var(--line);
+    background:var(--card); color:var(--muted); }
+  .sortbtn.on { background:var(--accent); color:#1a1204; border-color:var(--accent); font-weight:600; }
+  .oddsbanner { font-size:12px; color:var(--muted); }
+  .oddsbanner code { background:var(--card2); padding:1px 5px; border-radius:4px; color:var(--text); }
+
+  td.odds { min-width:170px; }
+  .oddline { display:flex; align-items:center; gap:7px; flex-wrap:wrap; font-variant-numeric:tabular-nums; }
+  .oddline .model { font-weight:700; font-size:15px; }
+  .oddline .arrow { color:var(--muted); }
+  .oddline .line { color:var(--text); }
+  .oddline .edge { font-weight:600; font-size:13px; }
+  td.odds small { display:block; margin-top:3px; font-size:11px; }
+  .badge { font-size:10px; font-weight:700; letter-spacing:.5px; color:#0d2b18;
+    background:var(--good); border-radius:5px; padding:1px 6px; }
+
+  .chips { display:flex; flex-wrap:wrap; gap:5px; }
+  .chip { font-size:11px; padding:2px 7px; border-radius:6px; background:var(--card2);
+    border:1px solid var(--line); color:var(--muted); white-space:nowrap; }
+  .chip b { color:var(--text); font-weight:600; }
+
+  h2 { font-size:16px; margin:34px 0 12px; padding-top:10px; border-top:1px solid var(--line); }
+  .games { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:14px; }
+  .game { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .game h3 { margin:0 0 4px; font-size:15px; }
+  .game .meta { color:var(--muted); font-size:12px; margin-bottom:10px; }
+  .mrow { display:flex; justify-content:space-between; gap:8px; padding:5px 0; border-top:1px dashed var(--line); font-size:13px; }
+  .mrow:first-of-type { border-top:none; }
+  .muted { color:var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>⚾ Daily Home Run Board</h1>
+      <div class="sub">{{ board.date }} · {{ board.num_games }} games ·
+        built {{ board.generated_at }}</div>
+    </div>
+    <form class="controls" method="get" action="/today">
+      <input type="date" name="date" value="{{ board.date }}">
+      <button class="btn" type="submit">Load</button>
+    </form>
+  </header>
+
+  {% macro scorecolor(v) -%}
+    {%- if v >= 62 -%}var(--good){%- elif v >= 52 -%}var(--mid){%- elif v >= 45 -%}#9aa7b3{%- else -%}var(--bad){%- endif -%}
+  {%- endmacro %}
+
+  <div class="legend">
+    <span>HR Score = weighted blend (0–100, 50 = neutral)</span>
+    <span>Weather {{ (board.weights.weather*100)|int }}%</span>
+    <span>Park {{ (board.weights.park*100)|int }}%</span>
+    <span>Pitcher FB%/HardHit% {{ (board.weights.pitcher*100)|int }}%</span>
+    <span>Batter form (7d) {{ (board.weights.form*100)|int }}%</span>
+    <span>BvP {{ (board.weights.bvp*100)|int }}%</span>
+  </div>
+
+  <div class="toolbar">
+    <div class="sortbtns">
+      <span class="muted">Sort:</span>
+      <a class="sortbtn {{ 'on' if sort != 'edge' }}" href="/today?date={{ board.date }}&sort=score">HR Score</a>
+      <a class="sortbtn {{ 'on' if sort == 'edge' }}" href="/today?date={{ board.date }}&sort=edge">Edge vs line</a>
+    </div>
+    <div class="oddsbanner">
+      {% if board.odds.batters_matched %}
+        📈 {{ board.odds.batters_matched }} HR props matched
+        (<code>{{ board.odds.provider }}</code>) · Model = P(≥1 HR); Edge vs de-vigged line
+      {% else %}
+        ⚠️ No HR prop lines loaded — drop a CSV at
+        <code>instance/odds/{{ board.date }}.csv</code> (see README). Model % still shown.
+      {% endif %}
+    </div>
+  </div>
+
+  {% if board.leaderboard %}
+  <table>
+    <thead>
+      <tr>
+        <th class="rank">#</th>
+        <th>Batter</th>
+        <th>Matchup</th>
+        <th>HR Score</th>
+        <th>Model / Line / Edge</th>
+        <th>Signals</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in board.leaderboard[:limit] %}
+      <tr>
+        <td class="rank">{{ loop.index }}</td>
+        <td class="who">
+          {{ r.batter }}{% if r.bats %} <span class="muted">({{ r.bats }})</span>{% endif %}
+          {% if r.projected_lineup %}<span class="tag">proj</span>{% endif %}
+          <small>{{ r.team }} · {{ r.park_abbr }}</small>
+        </td>
+        <td>
+          vs {{ r.opp_pitcher or "TBD" }}{% if r.opp_throws %} <span class="muted">({{ r.opp_throws }}HP)</span>{% endif %}
+          <small class="muted">{{ r.venue }}</small>
+        </td>
+        <td>
+          <div class="score">
+            <b>{{ r.hr_score }}</b>
+            <span class="bar"><i style="width:{{ r.hr_score }}%; background:{{ scorecolor(r.hr_score) }};"></i></span>
+          </div>
+        </td>
+        <td class="odds">
+          {% if r.odds %}
+            <div class="oddline">
+              <span class="model">{{ r.model_pct }}%</span>
+              <span class="arrow">→</span>
+              <span class="line">{{ '+' if r.odds.american > 0 }}{{ r.odds.american }}</span>
+              <span class="edge" style="color:{{ 'var(--good)' if r.odds.edge_pp > 0 else 'var(--bad)' }};">
+                {{ '+' if r.odds.edge_pp > 0 }}{{ r.odds.edge_pp }}pp</span>
+              {% if r.odds.value %}<span class="badge">VALUE</span>{% endif %}
+            </div>
+            <small class="muted">
+              fair {{ '+' if r.fair_american > 0 }}{{ r.fair_american }} ·
+              mkt {{ (r.odds.market_prob*100)|round(1) }}%{{ ' (novig)' if r.odds.implied_novig is not none }} ·
+              EV {{ '+' if r.odds.ev_pct > 0 }}{{ r.odds.ev_pct }}%
+            </small>
+          {% else %}
+            <div class="oddline"><span class="model">{{ r.model_pct }}%</span>
+              <span class="muted">no line</span></div>
+            <small class="muted">fair {{ '+' if r.fair_american > 0 }}{{ r.fair_american }}</small>
+          {% endif %}
+        </td>
+        <td>
+          <div class="chips">
+            <span class="chip">wx <b>{{ r.sub.weather }}</b></span>
+            <span class="chip">park <b>{{ r.sub.park }}</b></span>
+            <span class="chip">pit <b>{{ r.sub.pitcher }}</b>{% if r.pitcher_detail.fb_pct %} · FB {{ r.pitcher_detail.fb_pct }}%{% endif %}</span>
+            <span class="chip">form <b>{{ r.sub.form }}</b>{% if r.form_detail.pa %} · {{ r.form_detail.hr }}HR/{{ r.form_detail.pa }}PA{% endif %}</span>
+            <span class="chip">bvp <b>{{ r.sub.bvp }}</b>{% if r.bvp_detail.history %} · {{ r.bvp_detail.hr }}/{{ r.bvp_detail.ab }}AB{% endif %}</span>
+          </div>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">No games / no data for {{ board.date }}. Try another date.</p>
+  {% endif %}
+
+  <h2>By game — conditions &amp; starters</h2>
+  <div class="games">
+    {% for g in board.games %}
+    <div class="game">
+      <h3>{{ g.venue }}</h3>
+      <div class="meta">
+        Park HR factor {{ g.hr_factor }} ·
+        {{ g.weather.note }}{% if g.weather.favor %} · carry {{ g.weather.favor }}{% endif %}
+      </div>
+      {% for m in g.matchups %}
+        <div class="mrow">
+          <span>{{ m.team }} vs {{ m.opp_pitcher or "TBD" }}{% if m.opp_throws %} ({{ m.opp_throws }}HP){% endif %}</span>
+          <span class="muted">
+            {% if m.pitcher_profile %}FB {{ m.pitcher_profile.fb_pct }}% · HardHit {{ m.pitcher_profile.hard_hit_pct }}%{% else %}no batted-ball data{% endif %}
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <p class="sub" style="margin-top:30px">
+    Data: MLB StatsAPI · Baseball Savant · Baseball-Reference · Open-Meteo.
+    Model output only — not betting advice.
+  </p>
+</div>
+</body>
+</html>
