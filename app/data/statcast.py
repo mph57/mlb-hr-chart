@@ -17,9 +17,12 @@ from __future__ import annotations
 
 import datetime as dt
 import io
+import json
+import threading
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
+from pathlib import Path
 
 import pandas as pd
 import requests
@@ -30,6 +33,12 @@ STATSAPI = "https://statsapi.mlb.com/api/v1"
 SAVANT = "https://baseballsavant.mlb.com/leaderboard/custom"
 UA = {"User-Agent": "Mozilla/5.0 (mlb-hr-chart)"}
 TIMEOUT = 30
+SPLIT_TIMEOUT = 8       # fail fast on a slow/throttled split call -> neutral
+
+# On-disk cache so per-player season splits are fetched once per season, not on
+# every cold board build (they change slowly). Survives server restarts.
+CACHE_DIR = Path(__file__).resolve().parents[2] / "instance" / "cache"
+_CACHE_LOCK = threading.Lock()
 
 
 # --------------------------------------------------------------------------- #
@@ -179,7 +188,7 @@ def bvp(batter_id: int, pitcher_id: int) -> dict | None:
     return None
 
 
-def bvp_batch(pairs: list[tuple[int, int]], workers: int = 8) -> dict[tuple[int, int], dict | None]:
+def bvp_batch(pairs: list[tuple[int, int]], workers: int = 16) -> dict[tuple[int, int], dict | None]:
     """Fetch many (batter_id, pitcher_id) matchups concurrently (cached)."""
     results: dict[tuple[int, int], dict | None] = {}
     with ThreadPoolExecutor(max_workers=workers) as ex:
@@ -191,6 +200,95 @@ def bvp_batch(pairs: list[tuple[int, int]], workers: int = 8) -> dict[tuple[int,
             except Exception:
                 results[pair] = None
     return results
+
+
+# --------------------------------------------------------------------------- #
+# Platoon splits (batter performance vs LHP / RHP this season)
+# --------------------------------------------------------------------------- #
+def batter_splits(batter_id: int, season: int) -> dict:
+    """{'R': {pa,hr,slg}, 'L': {pa,hr,slg}} — the batter's season vs each hand.
+
+    Handles switch hitters automatically: their vs-R / vs-L lines already reflect
+    hitting from the platoon-advantaged side. Returns {} on any failure/timeout.
+    """
+    if not batter_id:
+        return {}
+    try:
+        resp = requests.get(
+            f"{STATSAPI}/people/{batter_id}/stats",
+            params={"stats": "statSplits", "season": season,
+                    "sitCodes": "vr,vl", "group": "hitting"},
+            timeout=SPLIT_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        return {}
+
+    out: dict[str, dict] = {}
+    code_to_hand = {"vr": "R", "vl": "L"}
+    for block in data.get("stats", []):
+        for sp in block.get("splits", []):
+            hand = code_to_hand.get(sp.get("split", {}).get("code"))
+            if not hand:
+                continue
+            st = sp.get("stat", {})
+            out[hand] = {
+                "pa": _int(st.get("plateAppearances")),
+                "hr": _int(st.get("homeRuns")),
+                "slg": _num(st.get("slg")),
+            }
+    return out
+
+
+def _splits_cache_path(season: int) -> Path:
+    return CACHE_DIR / f"splits_{season}.json"
+
+
+def _load_splits_cache(season: int) -> dict[str, dict]:
+    path = _splits_cache_path(season)
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return {}
+
+
+def _save_splits_cache(season: int, cache: dict[str, dict]) -> None:
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        _splits_cache_path(season).write_text(json.dumps(cache))
+    except Exception:
+        pass
+
+
+def batter_splits_batch(batter_ids: list[int], season: int,
+                        workers: int = 8) -> dict[int, dict]:
+    """Platoon splits for many batters, disk-cached per season.
+
+    Only players missing from the on-disk cache are fetched (concurrently, with
+    a fail-fast timeout), so after the first build of the day this is instant.
+    """
+    ids = [b for b in set(batter_ids) if b]
+    with _CACHE_LOCK:
+        cache = _load_splits_cache(season)
+
+    missing = [b for b in ids if str(b) not in cache]
+    if missing:
+        fetched: dict[str, dict] = {}
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futs = {ex.submit(batter_splits, b, season): b for b in missing}
+            for fut in futs:
+                b = futs[fut]
+                try:
+                    fetched[str(b)] = fut.result()
+                except Exception:
+                    fetched[str(b)] = {}
+        with _CACHE_LOCK:
+            cache = _load_splits_cache(season)   # re-read in case of concurrent write
+            cache.update(fetched)
+            _save_splits_cache(season, cache)
+
+    return {b: cache.get(str(b), {}) for b in ids}
 
 
 # --------------------------------------------------------------------------- #

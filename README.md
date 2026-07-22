@@ -5,11 +5,16 @@ A Flask web app that ranks every hitter on today's MLB slate by a blended
 
 | Signal | Weight | Source |
 |---|---|---|
-| **Weather** — game-time temp + wind blowing out/in (per park orientation) | 15% | Open-Meteo |
-| **Ballpark** — multi-year HR park factor | 15% | static table (`app/data/parks.py`) |
-| **Pitcher** — opposing starter's fly-ball % and hard-hit % allowed | 25% | Baseball Savant (Statcast) |
-| **Batter form** — last-7-day SLG + HR rate | 30% | Baseball-Reference |
-| **BvP** — batter's career line vs today's starter (sample-damped) | 15% | MLB StatsAPI |
+| **Weather** — game-time temp + wind blowing out/in (per park orientation) | 12% | Open-Meteo |
+| **Ballpark** — multi-year HR park factor | 13% | static table (`app/data/parks.py`) |
+| **Pitcher** — opposing starter's fly-ball % and hard-hit % allowed | 22% | Baseball Savant (Statcast) |
+| **Batter form** — last-7-day SLG + HR rate | 23% | Baseball-Reference |
+| **Platoon** — batter's power (SLG + HR rate) vs the opposing starter's **hand** (L/R split); bumps hitters who mash that hand | 18% | MLB StatsAPI |
+| **BvP** — batter's career line vs today's starter (sample-damped) | 12% | MLB StatsAPI |
+
+The platoon split handles switch hitters automatically (their vs-L / vs-R lines
+already reflect the advantaged side) and is disk-cached to `instance/cache/`
+so the ~1 call/batter happens once per season, not on every board build.
 
 Each signal is mapped to a 0–100 sub-score (50 = league-neutral), then blended.
 Small samples (recent PA, career AB vs pitcher) regress toward neutral so a

@@ -90,6 +90,7 @@
     <span>Park {{ (board.weights.park*100)|int }}%</span>
     <span>Pitcher FB%/HardHit% {{ (board.weights.pitcher*100)|int }}%</span>
     <span>Batter form (7d) {{ (board.weights.form*100)|int }}%</span>
+    <span>Platoon L/R split {{ (board.weights.platoon*100)|int }}%</span>
     <span>BvP {{ (board.weights.bvp*100)|int }}%</span>
   </div>
 
@@ -149,6 +150,7 @@
             <span class="chip">park <b>{{ r.sub.park }}</b></span>
             <span class="chip">pit <b>{{ r.sub.pitcher }}</b>{% if r.pitcher_detail.fb_pct %} · FB {{ r.pitcher_detail.fb_pct }}%{% endif %}</span>
             <span class="chip">form <b>{{ r.sub.form }}</b>{% if r.form_detail.pa %} · {{ r.form_detail.hr }}HR/{{ r.form_detail.pa }}PA{% endif %}</span>
+            <span class="chip">plat <b>{{ r.sub.platoon }}</b>{% if r.platoon_detail.pa %} · {{ r.platoon_detail.hr }}HR/{{ r.platoon_detail.pa }} vs {{ r.platoon_detail.hand }}HP{% endif %}</span>
             <span class="chip">bvp <b>{{ r.sub.bvp }}</b>{% if r.bvp_detail.history %} · {{ r.bvp_detail.hr }}/{{ r.bvp_detail.ab }}AB{% endif %}</span>
           </div>
         </td>

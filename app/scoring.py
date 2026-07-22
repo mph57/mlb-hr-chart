@@ -24,11 +24,12 @@ from .data import statcast
 from .data.weather import game_weather
 
 WEIGHTS = {
-    "weather": 0.15,
-    "park": 0.15,
-    "pitcher": 0.25,
-    "form": 0.30,
-    "bvp": 0.15,
+    "weather": 0.12,
+    "park": 0.13,
+    "pitcher": 0.22,
+    "form": 0.23,
+    "bvp": 0.12,
+    "platoon": 0.18,   # batter's power vs the opposing starter's hand (L/R split)
 }
 
 # League-ish reference points used to center the sub-scores.
@@ -86,14 +87,39 @@ def _bvp_score(bvp: dict | None) -> tuple[float, dict]:
     return score, {"ab": ab, "hr": hr, "ops": ops, "history": True}
 
 
+def _platoon_score(splits: dict | None, throws: str | None) -> tuple[float, dict]:
+    """Batter's power (SLG + HR rate) vs the opposing starter's hand.
+
+    50 = league-average power vs that hand; >50 means the batter mashes it and
+    earns a bump. Damped toward neutral on thin split samples (a batter may have
+    few PA vs one hand). Neutral if we don't know the pitcher's hand or the split.
+    """
+    hand = throws if throws in ("L", "R") else None
+    s = (splits or {}).get(hand) if hand else None
+    if not s or not s.get("pa"):
+        return 50.0, {"hand": hand, "pa": 0, "hr": 0, "slg": None}
+    pa = s["pa"]
+    hr = s.get("hr") or 0
+    slg = s.get("slg") or 0.0
+    hr_per_pa = hr / pa if pa else 0.0
+    slg_term = 50.0 + (slg - LG_SLG) * 125.0
+    hr_term = 50.0 + (hr_per_pa - LG_HR_PER_PA) * 600.0
+    raw = 0.5 * slg_term + 0.5 * hr_term
+    trust = min(pa / 40.0, 1.0)           # season splits vs one hand build slowly
+    score = _clamp(50.0 + trust * (raw - 50.0))
+    return score, {"hand": hand, "pa": pa, "hr": hr, "slg": slg}
+
+
 def _score_batter(batter, pitcher, park, weather, pit_prof,
-                  form_map, bvp_map, odds_map, team=None):
+                  form_map, bvp_map, odds_map, splits_map, team=None):
     weather_s = weather["favor"]
     park_s = _park_score(park["hr_factor"])
     pitcher_s, pit_detail = _pitcher_score(pit_prof)
     form_s, form_detail = _form_score(form_map.get(batter["id"]))
     bvp_raw = bvp_map.get((batter["id"], pitcher["id"] if pitcher else None))
     bvp_s, bvp_detail = _bvp_score(bvp_raw)
+    throws = pitcher.get("throws") if pitcher else None
+    plat_s, plat_detail = _platoon_score(splits_map.get(batter["id"]), throws)
 
     total = (
         WEIGHTS["weather"] * weather_s
@@ -101,6 +127,7 @@ def _score_batter(batter, pitcher, park, weather, pit_prof,
         + WEIGHTS["pitcher"] * pitcher_s
         + WEIGHTS["form"] * form_s
         + WEIGHTS["bvp"] * bvp_s
+        + WEIGHTS["platoon"] * plat_s
     )
 
     # Today's HR prop line for this batter, if we have one (name shown as-is).
@@ -119,11 +146,13 @@ def _score_batter(batter, pitcher, park, weather, pit_prof,
             "pitcher": round(pitcher_s, 1),
             "form": round(form_s, 1),
             "bvp": round(bvp_s, 1),
+            "platoon": round(plat_s, 1),
         },
         "odds": quote,          # {american, book, implied, ...} or None
         "pitcher_detail": pit_detail,
         "form_detail": form_detail,
         "bvp_detail": bvp_detail,
+        "platoon_detail": plat_detail,
     }
 
 
@@ -138,8 +167,9 @@ def get_board(date: str | None = None) -> dict:
     form_map = _safe(lambda: statcast.recent_form(date, days=7), {})
     odds_map = _safe(lambda: get_hr_odds(date), {})
 
-    # Resolve lineups (posted or fallback) and gather every BvP pair up front.
+    # Resolve lineups (posted or fallback) and gather BvP pairs + batter ids.
     bvp_pairs: list[tuple[int, int]] = []
+    batter_ids: list[int] = []
     for g in slate:
         for side, opp in (("home", "away"), ("away", "home")):
             pitcher = g[opp]["pitcher"]
@@ -151,12 +181,14 @@ def get_board(date: str | None = None) -> dict:
                 g[side]["lineup_projected"] = True
             else:
                 g[side]["lineup_projected"] = False
-            if pitcher and pitcher.get("id"):
-                for b in lineup:
-                    if b.get("id"):
+            for b in lineup:
+                if b.get("id"):
+                    batter_ids.append(b["id"])
+                    if pitcher and pitcher.get("id"):
                         bvp_pairs.append((b["id"], pitcher["id"]))
 
     bvp_map = _safe(lambda: statcast.bvp_batch(bvp_pairs), {})
+    splits_map = _safe(lambda: statcast.batter_splits_batch(batter_ids, year), {})
 
     games_out = []
     all_rows = []
@@ -182,7 +214,7 @@ def get_board(date: str | None = None) -> dict:
                 if not b.get("id"):
                     continue
                 row = _score_batter(b, pitcher, park, weather, pit_prof,
-                                    form_map, bvp_map, odds_map,
+                                    form_map, bvp_map, odds_map, splits_map,
                                     team=g[side]["abbr"])
                 row.update({
                     "team": g[side]["abbr"],

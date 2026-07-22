@@ -9,3 +9,5 @@ __pycache__/
 # Daily odds drops are local data; keep only the sample in the repo.
 instance/odds/20*.csv
 instance/odds/20*.json
+# Local disk caches (player splits, etc.)
+instance/cache/
