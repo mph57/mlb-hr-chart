@@ -11,6 +11,12 @@ from .scoring import get_board
 main_bp = Blueprint("main", __name__)
 
 
+@main_bp.get("/healthz")
+def healthz():
+    """Fast liveness check for Render — never builds the board."""
+    return {"ok": True}, 200
+
+
 def _build(date: str):
     ttl = current_app.config["BOARD_CACHE_TTL"]
     board = cache.get_or_build(f"board:{date}", ttl, lambda: get_board(date))
