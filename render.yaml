@@ -6,10 +6,11 @@ services:
     runtime: python
     plan: free
     buildCommand: "pip install -r requirements.txt"
-    # Bind to Render's injected $PORT. 1 worker (free tier = 512MB RAM); long
-    # timeout because the first request of a cold container builds the board
-    # from ~500 live API calls (30-90s).
-    startCommand: "gunicorn wsgi:app --bind 0.0.0.0:$PORT --timeout 300 --workers 1"
+    # Bind to Render's injected $PORT. 1 worker to stay under the 512MB free
+    # tier, but THREADED: the 30-90s board build (mostly network I/O) blocks a
+    # thread, not the process, so /healthz keeps answering and Render doesn't
+    # kill the worker mid-build (which caused 502s). Long timeout for the build.
+    startCommand: "gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 1 --threads 8 --worker-class gthread --timeout 300"
     healthCheckPath: "/healthz"
     envVars:
       - key: SECRET_KEY
