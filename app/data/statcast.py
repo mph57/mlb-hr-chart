@@ -3,15 +3,16 @@
 Sources (all free, no keys):
   - Pitcher batted-ball profile (fly-ball %, hard-hit %): Baseball Savant's
     custom leaderboard CSV, keyed by MLBAM player id.
-  - Batter recent form (last N days): Baseball Reference range splits via
-    pybaseball, keyed by MLBAM id.
+  - Batter recent form (last N days): MLB StatsAPI ``byDateRange`` hitting
+    leaderboard, keyed by MLBAM id.
   - Batter-vs-pitcher career history: MLB StatsAPI ``vsPlayer`` split.
   - Recent-lineup fallback: most recent Final boxscore for a team, used when
     today's lineup has not been posted yet.
 
-FanGraphs' leaderboards are intentionally avoided — pybaseball's FanGraphs
-scraper currently returns HTTP 403, so everything here rides on Savant, BRef,
-and StatsAPI, which remain open.
+Everything rides on Savant and StatsAPI, which stay reachable from hosted boxes.
+Baseball-Reference/pybaseball scrapers are avoided on purpose: they get blocked
+(HTTP 403) or rate-limited from server IPs, which silently left recent form
+neutral on deploy.
 """
 from __future__ import annotations
 
@@ -86,37 +87,52 @@ def pitcher_batted_ball(year: int, min_bbe: int = 40) -> dict[int, dict]:
 # --------------------------------------------------------------------------- #
 # Batter recent form (last N days)
 # --------------------------------------------------------------------------- #
+def _date_range_hitting(start: str, end: str) -> dict[int, dict]:
+    """MLBAM id -> full hitting line over [start, end] via MLB StatsAPI.
+
+    Uses the league-wide ``byDateRange`` leaderboard — one call for every hitter,
+    keyed by MLBAM id. StatsAPI stays reachable from hosted boxes, unlike the
+    Baseball-Reference range scraper (pybaseball), which gets blocked/rate-limited
+    from server IPs and silently left recent form neutral on deploy.
+    """
+    resp = requests.get(
+        f"{STATSAPI}/stats",
+        params={"stats": "byDateRange", "group": "hitting",
+                "startDate": start, "endDate": end,
+                "sportId": 1, "playerPool": "All", "limit": 2000},
+        headers=UA, timeout=TIMEOUT,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    out: dict[int, dict] = {}
+    for block in data.get("stats", []):
+        for sp in block.get("splits", []):
+            pid = (sp.get("player") or {}).get("id")
+            if pid is None:
+                continue
+            st = sp.get("stat", {})
+            out[int(pid)] = {
+                "pa": _int(st.get("plateAppearances")),
+                "ab": _int(st.get("atBats")),
+                "hr": _int(st.get("homeRuns")),
+                "ba": _num(st.get("avg")),
+                "slg": _num(st.get("slg")),
+                "ops": _num(st.get("ops")),
+                "games": _int(st.get("gamesPlayed")),
+            }
+    return out
+
+
 @lru_cache(maxsize=8)
 def recent_form(end_date: str, days: int = 7) -> dict[int, dict]:
     """MLBAM id -> {pa, ab, hr, ba, slg, ops, games} over the trailing window."""
-    from pybaseball import batting_stats_range
-
     end = dt.date.fromisoformat(end_date)
     start = end - dt.timedelta(days=days)
     try:
-        df = batting_stats_range(start.isoformat(), end.isoformat())
+        return _date_range_hitting(start.isoformat(), end.isoformat())
     except Exception:
         return {}
-
-    out: dict[int, dict] = {}
-    for _, r in df.iterrows():
-        mlbid = r.get("mlbID")
-        if pd.isna(mlbid):
-            continue
-        try:
-            pid = int(mlbid)
-        except (ValueError, TypeError):
-            continue
-        out[pid] = {
-            "pa": _int(r.get("PA")),
-            "ab": _int(r.get("AB")),
-            "hr": _int(r.get("HR")),
-            "ba": _num(r.get("BA")),
-            "slg": _num(r.get("SLG")),
-            "ops": _num(r.get("OPS")),
-            "games": _int(r.get("G")),
-        }
-    return out
 
 
 @lru_cache(maxsize=4)
@@ -126,28 +142,15 @@ def season_form(end_date: str) -> dict[int, dict]:
     Gives a stable HR-per-PA base rate for the probability model (the 7-day
     window in ``recent_form`` is too noisy to anchor a rate on its own).
     """
-    from pybaseball import batting_stats_range
-
     end = dt.date.fromisoformat(end_date)
     start = dt.date(end.year, 3, 15)   # comfortably before Opening Day
     if end <= start:
         return {}
     try:
-        df = batting_stats_range(start.isoformat(), end.isoformat())
+        full = _date_range_hitting(start.isoformat(), end.isoformat())
     except Exception:
         return {}
-
-    out: dict[int, dict] = {}
-    for _, r in df.iterrows():
-        mlbid = r.get("mlbID")
-        if pd.isna(mlbid):
-            continue
-        try:
-            pid = int(mlbid)
-        except (ValueError, TypeError):
-            continue
-        out[pid] = {"pa": _int(r.get("PA")), "hr": _int(r.get("HR"))}
-    return out
+    return {pid: {"pa": v["pa"], "hr": v["hr"]} for pid, v in full.items()}
 
 
 # --------------------------------------------------------------------------- #
