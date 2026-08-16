@@ -11,3 +11,5 @@ instance/odds/20*.csv
 instance/odds/20*.json
 # Local disk caches (player splits, etc.)
 instance/cache/
+# Built-board snapshots (stale-while-revalidate backing store)
+instance/board_cache/
