@@ -45,7 +45,8 @@ def game_weather(park: dict, game_time_iso: str | None) -> dict:
     if roof == "dome" or lat is None or lon is None:
         return {"favor": 50.0, "roof": roof, "note": "indoor / neutral",
                 "temp": None, "wind_speed": None, "wind_dir": None,
-                "wind_desc": None, "out_component": None, "humidity": None}
+                "wind_desc": None, "out_component": None, "wind_angle": None,
+                "humidity": None}
 
     try:
         game_dt = dt.datetime.fromisoformat(game_time_iso.replace("Z", "+00:00")) \
@@ -69,7 +70,8 @@ def game_weather(park: dict, game_time_iso: str | None) -> dict:
     except Exception:
         return {"favor": 50.0, "roof": roof, "note": "weather unavailable",
                 "temp": None, "wind_speed": None, "wind_dir": None,
-                "wind_desc": None, "out_component": None, "humidity": None}
+                "wind_desc": None, "out_component": None, "wind_angle": None,
+                "humidity": None}
 
     # Pick the forecast hour closest to game time.
     times = [dt.datetime.fromisoformat(t).replace(tzinfo=dt.timezone.utc)
@@ -87,6 +89,9 @@ def game_weather(park: dict, game_time_iso: str | None) -> dict:
     delta = abs((blow_to - cf + 180) % 360 - 180)   # 0=straight out, 180=straight in
     out_component = wind_speed * math.cos(math.radians(delta))  # + out / - in
     wind_desc = _bearing_desc(delta)
+    # Clockwise angle of the wind (where it blows *toward*) relative to the
+    # out-to-CF axis, for drawing a dial: 0 = out to CF, 180 = in from CF.
+    wind_angle = round((blow_to - cf) % 360)
 
     # Favorability: 50 neutral, temp and wind push it up/down.
     temp_term = (temp - 70.0) * 0.6            # +12 at 90F, -12 at 50F
@@ -108,5 +113,6 @@ def game_weather(park: dict, game_time_iso: str | None) -> dict:
         "wind_dir": round(wind_dir),
         "wind_desc": wind_desc,
         "out_component": round(out_component, 1),
+        "wind_angle": wind_angle,
         "humidity": round(humidity),
     }

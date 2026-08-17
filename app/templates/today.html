@@ -64,6 +64,12 @@
   .mrow { display:flex; justify-content:space-between; gap:8px; padding:5px 0; border-top:1px dashed var(--line); font-size:13px; }
   .mrow:first-of-type { border-top:none; }
   .muted { color:var(--muted); }
+
+  .venue-line { display:flex; align-items:center; gap:7px; margin-top:2px; }
+  .wind { display:inline-flex; align-items:center; gap:5px; }
+  .wind svg { display:block; flex:none; }
+  .wind-lbl { font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .wind-unit { color:var(--muted); }
 </style>
 </head>
 <body>
@@ -82,6 +88,36 @@
 
   {% macro scorecolor(v) -%}
     {%- if v >= 62 -%}var(--good){%- elif v >= 52 -%}var(--mid){%- elif v >= 45 -%}#9aa7b3{%- else -%}var(--bad){%- endif -%}
+  {%- endmacro %}
+
+  {# Small wind dial: top of the circle = out to center field. The arrow points
+     the way the wind blows (up = out/helps HRs, down = in/kills them). #}
+  {% macro winddial(wx) -%}
+    {%- if wx and wx.wind_angle is not none and wx.wind_speed is not none -%}
+      {%- set oc = wx.out_component or 0 -%}
+      {%- set col = 'var(--good)' if oc >= 1 else ('var(--bad)' if oc <= -1 else 'var(--muted)') -%}
+      {%- set word = 'out' if oc >= 1 else ('in' if oc <= -1 else 'cross') -%}
+      <span class="wind" title="Wind {{ '%.0f'|format(oc|abs) }} mph {{ word }} to CF · {{ wx.wind_speed }} mph total{% if wx.temp is not none %} · {{ wx.temp }}°F{% endif %}">
+        <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+          <circle cx="14" cy="14" r="12" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+          <circle cx="14" cy="3.4" r="1.3" fill="var(--muted)"/>
+          <path d="M11.6 25 h4.8 l-2.4 2.2 z" fill="var(--line)"/>
+          <g transform="rotate({{ wx.wind_angle }} 14 14)">
+            <line x1="14" y1="14" x2="14" y2="6.5" stroke="{{ col }}" stroke-width="2" stroke-linecap="round"/>
+            <path d="M14 3.6 L10.9 8.6 L17.1 8.6 Z" fill="{{ col }}"/>
+          </g>
+        </svg>
+        <span class="wind-lbl" style="color:{{ col }}">{{ '%.0f'|format(oc|abs) }}<span class="wind-unit">mph {{ word }}</span></span>
+      </span>
+    {%- else -%}
+      <span class="wind" title="{{ (wx.note if wx else none) or 'no wind data' }}">
+        <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+          <circle cx="14" cy="14" r="12" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+          <path d="M6 17 q8 -11 16 0" fill="none" stroke="var(--muted)" stroke-width="1.6"/>
+        </svg>
+        <span class="wind-lbl wind-unit">{{ 'indoor' if wx and wx.roof in ('dome','retractable') else 'n/a' }}</span>
+      </span>
+    {%- endif -%}
   {%- endmacro %}
 
   <div class="legend">
@@ -128,7 +164,10 @@
         </td>
         <td>
           vs {{ r.opp_pitcher or "TBD" }}{% if r.opp_throws %} <span class="muted">({{ r.opp_throws }}HP)</span>{% endif %}
-          <small class="muted">{{ r.venue }}</small>
+          <small class="venue-line muted">
+            <span>{{ r.venue }}</span>
+            {{ winddial(r.wx) }}
+          </small>
         </td>
         <td>
           <div class="score">
