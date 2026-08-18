@@ -18,6 +18,7 @@ import math
 import requests
 
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
+UA = {"User-Agent": "Mozilla/5.0 (mlb-hr-chart)"}
 TIMEOUT = 20
 
 
@@ -56,19 +57,26 @@ def game_weather(park: dict, game_time_iso: str | None) -> dict:
     target = game_dt or dt.datetime.now(dt.timezone.utc)
     date_str = target.date().isoformat()
 
-    try:
-        resp = requests.get(OPEN_METEO, params={
-            "latitude": lat, "longitude": lon,
-            "hourly": "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m",
-            "temperature_unit": "fahrenheit",
-            "wind_speed_unit": "mph",
-            "timezone": "UTC",
-            "start_date": date_str, "end_date": date_str,
-        }, timeout=TIMEOUT)
-        resp.raise_for_status()
-        hourly = resp.json()["hourly"]
-    except Exception:
-        return {"favor": 50.0, "roof": roof, "note": "weather unavailable",
+    params = {
+        "latitude": lat, "longitude": lon,
+        "hourly": "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m",
+        "temperature_unit": "fahrenheit",
+        "wind_speed_unit": "mph",
+        "timezone": "UTC",
+        "start_date": date_str, "end_date": date_str,
+    }
+    hourly = None
+    reason = "unknown"
+    for attempt in range(2):   # one quick retry — cold hosts hiccup on first hit
+        try:
+            resp = requests.get(OPEN_METEO, params=params, headers=UA, timeout=TIMEOUT)
+            resp.raise_for_status()
+            hourly = resp.json()["hourly"]
+            break
+        except Exception as e:   # surface the cause so deploy failures are diagnosable
+            reason = f"{type(e).__name__}: {e}"[:120]
+    if hourly is None:
+        return {"favor": 50.0, "roof": roof, "note": f"weather unavailable ({reason})",
                 "temp": None, "wind_speed": None, "wind_dir": None,
                 "wind_desc": None, "out_component": None, "wind_angle": None,
                 "humidity": None}
